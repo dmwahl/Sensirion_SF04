@@ -21,7 +21,7 @@ A platform-independent driver library for the **Sensirion SF04/SFM7033** digital
 
 ## ✨ Features
 
-- **Platform Independent**: Works on mbed, Particle.io, and easily portable to other platforms
+- **Platform Independent**: Works on mbed, Particle.io, STM32, ESP32, ESP8266, and easily portable to other platforms
 - **Hardware Abstraction Layer (HAL)**: Clean separation between sensor logic and platform-specific code
 - **Multiple Measurements**: Flow rate, temperature, and supply voltage monitoring
 - **Multi-Gas Calibrations**: Supports Air, O2, N2O, and concentration measurements
@@ -58,13 +58,17 @@ A platform-independent driver library for the **Sensirion SF04/SFM7033** digital
 
 - ✅ **mbed OS** - ARM Cortex microcontrollers
 - ✅ **Particle.io** - Photon, Electron, Argon, Boron, Xenon, P2, Photon 2
+- ✅ **STM32 HAL** - All STM32 families (F0, F1, F4, F7, L0, L4, H7, etc.)
+- ✅ **ESP32 Arduino** - ESP32, ESP32-S2, ESP32-S3, ESP32-C3, ESP32-C6
+- ✅ **ESP8266 Arduino** - All ESP8266 modules
+- ✅ **ESP32 ESP-IDF** - Native ESP-IDF framework
 
 ### Easily Portable To
 
-- 🔜 Arduino (AVR, ARM, ESP32)
-- 🔜 ESP-IDF (ESP32/ESP8266)
-- 🔜 STM32 HAL
+- 🔜 Arduino (AVR, ARM, SAMD)
 - 🔜 Zephyr RTOS
+- 🔜 NuttX RTOS
+- 🔜 FreeRTOS (bare metal)
 
 ## 🏗️ Architecture
 
@@ -89,11 +93,15 @@ The library uses a Hardware Abstraction Layer (HAL) to separate platform-specifi
 │    - IDebug (optional)              │
 └──────────────┬──────────────────────┘
                │
-       ┌───────┴────────┐
-       │                │
-┌──────▼─────┐   ┌──────▼──────┐
-│ mbed HAL   │   │ Particle HAL│
-└────────────┘   └─────────────┘
+       ┌───────┴────────────────────┐
+       │          │         │     │
+┌──────▼─────┐   │   ┌─────▼─┐   │
+│ mbed HAL   │   │   │STM32  │   │
+└────────────┘   │   │HAL    │   │
+          ┌──────▼──┐└───────┘   │
+          │Particle │      ┌─────▼────┐
+          │HAL      │      │ESP32 HAL │
+          └─────────┘      └──────────┘
 ```
 
 ### File Structure
@@ -104,8 +112,13 @@ Sensirion_SF04/
 │   ├── sf04_hal.h                    # HAL interface definitions
 │   ├── mbed/
 │   │   └── sf04_hal_mbed.h          # mbed implementation
-│   └── particle/
-│       └── sf04_hal_particle.h      # Particle implementation
+│   ├── particle/
+│   │   └── sf04_hal_particle.h      # Particle implementation
+│   ├── stm32/
+│   │   └── sf04_hal_stm32.h         # STM32 HAL implementation
+│   └── esp32/
+│       ├── sf04_hal_esp32_arduino.h # ESP32/ESP8266 Arduino
+│       └── sf04_hal_esp32_idf.h     # ESP32 ESP-IDF
 ├── sensirion_sf04_typedefs.h        # Portable type definitions
 ├── sensirion_sf04_v2.h               # Main driver header (v2)
 ├── sensirion_sf04_v2.cpp             # Main driver implementation (v2)
@@ -114,9 +127,18 @@ Sensirion_SF04/
 ├── examples/
 │   ├── mbed/
 │   │   └── main.cpp                 # mbed example
-│   └── particle/
-│       ├── sf04_example.ino         # Particle example
-│       └── project.properties       # Particle project file
+│   ├── particle/
+│   │   ├── sf04_example.ino         # Particle example
+│   │   └── project.properties       # Particle project file
+│   ├── stm32/
+│   │   └── main.cpp                 # STM32 example
+│   ├── esp32_arduino/
+│   │   └── sf04_example.ino         # ESP32/ESP8266 Arduino example
+│   └── esp32_idf/
+│       ├── CMakeLists.txt           # ESP-IDF project config
+│       └── main/
+│           ├── CMakeLists.txt       # Component config
+│           └── sf04_example.cpp     # ESP-IDF example
 └── README.md                         # This file
 ```
 
@@ -148,6 +170,35 @@ cd my_sf04_project
 particle compile <platform>
 particle flash <device> <binary>
 ```
+
+### STM32 HAL
+
+1. Create or open your STM32 project in STM32CubeIDE
+2. Copy the library files to your project `Core/Src` and `Core/Inc`
+3. Configure I2C peripheral using STM32CubeMX (100 kHz, standard mode)
+4. Add includes:
+   - `#include "sensirion_sf04_v2.h"`
+   - `#include "hal/stm32/sf04_hal_stm32.h"`
+5. See `examples/stm32/main.cpp` for complete example
+
+### ESP32/ESP8266 Arduino
+
+1. Install ESP32/ESP8266 board support in Arduino IDE
+2. Copy library files to your Arduino libraries folder or project directory
+3. Include headers:
+   - `#include "sensirion_sf04_v2.h"`
+   - `#include "hal/esp32/sf04_hal_esp32_arduino.h"`
+4. See `examples/esp32_arduino/sf04_example.ino` for complete example
+
+### ESP32 ESP-IDF
+
+1. Create or open your ESP-IDF project
+2. Copy library files to `components/sf04/` directory
+3. Add component to CMakeLists.txt
+4. Include headers:
+   - `#include "sensirion_sf04_v2.h"`
+   - `#include "hal/esp32/sf04_hal_esp32_idf.h"`
+5. See `examples/esp32_idf/` for complete project structure
 
 ## 🚀 Quick Start
 
@@ -213,6 +264,117 @@ void loop() {
                   sensor.getTemperature());
 
     delay(1000);  // 1 second
+}
+```
+
+### STM32 HAL Example
+
+```cpp
+#include "main.h"
+#include "sensirion_sf04_v2.h"
+#include "hal/stm32/sf04_hal_stm32.h"
+
+extern I2C_HandleTypeDef hi2c1;  // Initialized by STM32CubeMX
+extern UART_HandleTypeDef huart2;
+
+#define SF04_ADDR 0x40
+
+// Create HAL instances
+SF04HAL::stm32::STM32I2C halI2C(&hi2c1);
+SF04HAL::stm32::STM32Timing halTiming;
+SF04HAL::stm32::STM32Debug halDebug(&huart2);
+
+// Create sensor instance
+SF04 sensor(halI2C, halTiming, SF04_ADDR, 0, 16, &halDebug);
+
+int main(void) {
+    HAL_Init();
+    SystemClock_Config();
+    MX_I2C1_Init();
+    MX_USART2_UART_Init();
+
+    SF04HAL::stm32::enableDWT();  // For accurate microsecond delays
+
+    while(1) {
+        sensor.Measure(FLOW);
+        sensor.Measure(TEMP);
+
+        halDebug.printf("Flow: %.2f %s, Temp: %.1f°C\n",
+                       sensor.getFlow(),
+                       sensor.flowUnitStr,
+                       sensor.getTemperature());
+
+        HAL_Delay(1000);
+    }
+}
+```
+
+### ESP32 Arduino Example
+
+```cpp
+#include <Arduino.h>
+#include "sensirion_sf04_v2.h"
+#include "hal/esp32/sf04_hal_esp32_arduino.h"
+
+#define SF04_ADDR 0x40
+
+// Option 1: Default pins (GPIO21=SDA, GPIO22=SCL)
+SF04HAL::esp32::ESP32I2C halI2C(Wire, 100000);
+
+// Option 2: Custom pins (ESP32 only)
+// SF04HAL::esp32::ESP32I2C halI2C(Wire, 21, 22, 100000);
+
+SF04HAL::esp32::ESP32Timing halTiming;
+SF04HAL::esp32::ESP32Debug halDebug(Serial);
+
+SF04 sensor(halI2C, halTiming, SF04_ADDR, 0, 16, &halDebug);
+
+void setup() {
+    Serial.begin(115200);
+}
+
+void loop() {
+    sensor.Measure(FLOW);
+    sensor.Measure(TEMP);
+
+    Serial.printf("Flow: %.2f %s, Temp: %.1f°C\n",
+                  sensor.getFlow(),
+                  sensor.flowUnitStr,
+                  sensor.getTemperature());
+
+    delay(1000);
+}
+```
+
+### ESP32 ESP-IDF Example
+
+```cpp
+#include "sensirion_sf04_v2.h"
+#include "hal/esp32/sf04_hal_esp32_idf.h"
+
+#define I2C_SDA GPIO_NUM_21
+#define I2C_SCL GPIO_NUM_22
+#define SF04_ADDR 0x40
+
+// Create HAL instances
+SF04HAL::esp32_idf::ESP32IDFI2C halI2C(I2C_NUM_0, I2C_SDA, I2C_SCL, 100000);
+SF04HAL::esp32_idf::ESP32IDFTiming halTiming;
+SF04HAL::esp32_idf::ESP32IDFDebug halDebug("SF04");
+
+SF04 sensor(halI2C, halTiming, SF04_ADDR, 0, 16, &halDebug);
+
+extern "C" void app_main(void) {
+    while(1) {
+        sensor.Measure(FLOW);
+        sensor.Measure(TEMP);
+
+        ESP_LOGI("MAIN", "Flow: %.2f %s, Temp: %.1f°C",
+                sensor.getFlow(),
+                sensor.flowUnitStr,
+                sensor.getTemperature());
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
 ```
 
@@ -296,14 +458,18 @@ SF04_I2C_ERROR         = 0x10  // I2C communication error
 Complete examples are provided in the `examples/` directory:
 
 - **mbed**: `examples/mbed/main.cpp`
-- **Particle**: `examples/particle/sf04_example.ino`
+- **Particle.io**: `examples/particle/sf04_example.ino`
+- **STM32 HAL**: `examples/stm32/main.cpp`
+- **ESP32/ESP8266 Arduino**: `examples/esp32_arduino/sf04_example.ino`
+- **ESP32 ESP-IDF**: `examples/esp32_idf/main/sf04_example.cpp`
 
 Each example demonstrates:
-- Sensor initialization
-- Performing measurements
-- Reading flow, temperature, and voltage
-- Error handling
-- Debug output
+- Sensor initialization with platform-specific HAL
+- Performing measurements (flow, temperature, voltage)
+- Reading and converting sensor values
+- Error handling and diagnostics
+- Debug output (UART/Serial/ITM)
+- Platform-specific features (WiFi, cloud, FreeRTOS, etc.)
 
 ## 🆕 Improvements in v2.0
 
@@ -313,7 +479,7 @@ The v2.0 driver includes significant improvements over the original version:
 
 | Feature | v1.0 (Original) | v2.0 (Improved) |
 |---------|-----------------|-----------------|
-| **Platform Support** | mbed only | mbed, Particle.io, easily portable |
+| **Platform Support** | mbed only | mbed, Particle.io, STM32, ESP32, ESP8266 |
 | **Hardware Abstraction** | ❌ Tightly coupled to mbed | ✅ Clean HAL interface |
 | **Code Organization** | Sample code in header | ✅ Separate examples directory |
 | **Debug Support** | ❌ No debug interface | ✅ Optional debug HAL |
